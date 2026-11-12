@@ -52,6 +52,15 @@ def _harvest_usage(obj, acc: dict) -> None:
                 v = _num(u, *keys)
                 if v is not None:
                     acc[out] = acc.get(out, 0) + v
+        elif isinstance(obj.get("tokens"), dict):
+            # `hermes chat -q … --format stream-json` reports the turn's totals as
+            # {"input", "output", "total", "cache_read", "cache_write"} on the result event.
+            t = obj["tokens"]
+            for out, keys in (("input_tokens", ("input", "input_tokens", "prompt_tokens")),
+                              ("output_tokens", ("output", "output_tokens", "completion_tokens"))):
+                v = _num(t, *keys)
+                if v is not None:
+                    acc[out] = acc.get(out, 0) + v
         for v in obj.values():
             if isinstance(v, (dict, list)) and v is not u:
                 _harvest_usage(v, acc)
