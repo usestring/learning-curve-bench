@@ -216,23 +216,36 @@ class HermesAdapterTests(Tmp):
             import json, os, sys
             with open(os.path.join(os.environ["HERMES_HOME"], "argv.log"), "a") as f:
                 f.write(json.dumps(sys.argv[1:]) + "\\n")
-            print(json.dumps({"type": "session", "session_id": "abc"}))
-            print(json.dumps({"type": "result", "usage": {"prompt_tokens": 5, "completion_tokens": 2, "cost": 0.01}}))
+            print(json.dumps({"type": "system", "subtype": "init", "session_id": "abc"}))
+            print(json.dumps({"type": "result", "session_id": "abc", "exit_code": 0,
+                              "tokens": {"input": 5, "output": 2, "total": 7,
+                                         "cache_read": 0, "cache_write": 0}}))
         '''))
         path = run(HermesAgent(tpl, mode="oneshot", hermes_bin=str(b), timeout=30), "learning", 0,
                    self.tmp / "runs", episodes=1)
         row = metrics.load(path)[0]
-        self.assertEqual(row["usage1"]["cost_usd"], 0.01)
+        self.assertEqual(row["usage1"]["input_tokens"], 5)
+        self.assertEqual(row["usage1"]["output_tokens"], 2)
         calls = [json.loads(x) for x in (path.parent / "homes/home-001/argv.log").read_text().splitlines()]
         self.assertEqual(calls[0][:2], ["chat", "-q"])
         self.assertNotIn("-r", calls[0])
         if row["usage2"] is not None:
             self.assertEqual(calls[1][calls[1].index("-r") + 1], "abc")
 
+    def test_usage_harvest_reads_stream_json_tokens(self):
+        acc = {}
+        _harvest_usage({"type": "result", "session_id": "abc", "exit_code": 0,
+                        "tokens": {"input": 120, "output": 30, "total": 150,
+                                   "cache_read": 10, "cache_write": 0}}, acc)
+        self.assertEqual(acc, {"input_tokens": 120, "output_tokens": 30})
+
     def test_usage_harvest_handles_nested_and_alternate_names(self):
         acc = {}
         _harvest_usage([{"a": {"usage": {"inputTokens": 3, "outputTokens": 1}}}, {"usage": {"input_tokens": 2}}], acc)
         self.assertEqual(acc, {"input_tokens": 5, "output_tokens": 1})
+        _harvest_usage({"usage": {"input_tokens": 4, "cost": 0.01},
+                        "tokens": {"input": 999, "output": 999}}, acc)
+        self.assertEqual(acc, {"input_tokens": 9, "output_tokens": 1, "cost_usd": 0.01})
 
 
 if __name__ == "__main__":
